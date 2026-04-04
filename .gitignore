@@ -1,0 +1,22 @@
+# Environnement
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+
+# VSCode
+.vscode/
+
+# OS files
+.DS_Store
+artifacts/
+venv/
+.env
+*.enc
+__pycache__/
+*.pyc
+artifacts/

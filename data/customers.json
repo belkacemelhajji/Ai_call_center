@@ -1,0 +1,68 @@
+{
+  "customers": [
+    {
+      "id": "C001",
+      "name": "Ahmed Benali",
+      "phone": "0612345678",
+      "plan": "Forfait 100Go",
+      "status": "active",
+      "balance": 15.5,
+      "issues": []
+    },
+    {
+      "id": "C002",
+      "name": "Fatima Zahra",
+      "phone": "0698765432",
+      "plan": "Forfait 20Go",
+      "status": "suspended",
+      "balance": -5.0,
+      "issues": [
+        "Facture impayée"
+      ]
+    },
+    {
+      "id": "C003",
+      "name": "Karim Mansouri",
+      "phone": "0634567890",
+      "plan": "Forfait Illimité",
+      "status": "active",
+      "balance": 42.0,
+      "issues": []
+    },
+    {
+      "id": "C004",
+      "name": "Sara Idrissi",
+      "phone": "0656789012",
+      "plan": "Forfait 50Go",
+      "status": "active",
+      "balance": 8.0,
+      "issues": [
+        "Problème réseau signalé"
+      ]
+    }
+  ],
+  "tickets": [
+    {
+      "id": "T472A49",
+      "customer_id": "C001",
+      "issue": "Problème de connexion 4G",
+      "priority": "high",
+      "status": "open",
+      "created_at": "2026-04-03 15:29:07"
+    },
+    {
+      "id": "T729AF9",
+      "customer_id": null,
+      "issue": "problème de connexion",
+      "priority": "moyenne",
+      "status": "open",
+      "created_at": "2026-04-04 12:56:59"
+    }
+  ],
+  "services": {
+    "4G_network": "operational",
+    "5G_network": "partial_outage",
+    "international_calls": "operational",
+    "roaming": "operational"
+  }
+}
