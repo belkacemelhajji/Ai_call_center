@@ -1,0 +1,8 @@
+groq
+openai-whisper
+sounddevice
+soundfile
+numpy
+gtts
+pygame
+python-dotenv
