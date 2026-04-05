@@ -16,3 +16,4 @@ ARTIFACTS_PATH = os.path.join(BASE_DIR, "artifacts")
 RECORD_DURATION = 6
 SAMPLE_RATE = 16000
 WHISPER_MODEL = "small"
+TTS_LANGUAGE = "fr"  # Language for text-to-speech (French)
