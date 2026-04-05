@@ -2,18 +2,35 @@ import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import gradio as gr
+import threading
 from agents.orchestrator import Orchestrator
 from agents.logger_agent import LoggerAgent
-from voice.tts import speak
 
 # Global state
 orchestrator = Orchestrator()
 logger = LoggerAgent()
-chat_history = []
+
+def speak_safe(text):
+    """TTS safe - ignore errors in thread"""
+    try:
+        import pyttsx3
+        engine = pyttsx3.init()
+        engine.setProperty('rate', 150)
+        engine.setProperty('volume', 0.9)
+        engine.say(text)
+        engine.runAndWait()
+        engine.stop()
+    except Exception as e:
+        print(f"TTS skipped: {e}")
+
+def speak_async(text):
+    """Speak in background"""
+    t = threading.Thread(target=speak_safe, args=(text,), daemon=True)
+    t.start()
 
 def process_text_message(message, history):
     """Process text message through agents"""
-    global orchestrator, logger, chat_history
+    global orchestrator, logger
 
     if not message.strip():
         return history, "", "En attente..."
@@ -28,21 +45,20 @@ def process_text_message(message, history):
     })
 
     response = result["response"]
-    speak(response)
+    speak_async(response)
 
-    history.append((message, response))
+    # Gradio new format
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": response})
 
-    # Build agent activity log
     intent = result.get("intent", {})
     tool = result.get("tool_result", {})
     escalated = result.get("escalated", False)
 
-    agent_log = f"""
-🧠 Intent Agent: {intent.get('intent', 'N/A')} (confiance: {intent.get('confidence', 'N/A')})
-🔧 Tool Agent: {tool.get('tool_used', 'N/A') if tool else 'Aucun outil'}
-🚨 Escalation: {'OUI ⚠️' if escalated else 'Non'}
+    agent_log = f"""🧠 Intent: {intent.get('intent', 'N/A')} ({intent.get('confidence', 'N/A')})
+🔧 Tool: {tool.get('tool_used', 'Aucun') if tool else 'Aucun'}
 📊 Entités: {intent.get('entities', {})}
-    """.strip()
+🚨 Escalade: {'OUI ⚠️' if escalated else 'Non'}"""
 
     return history, "", agent_log
 
@@ -51,51 +67,58 @@ def process_voice_message(audio, history):
     if audio is None:
         return history, "Aucun audio détecté"
 
-    import whisper
-    import soundfile as sf
-    import numpy as np
-
-    model = whisper.load_model("small")
-    result = model.transcribe(audio, language="fr")
-    message = result["text"].strip()
-
-    print(f"🎙️ Transcribed: {message}")
-    return process_text_message(message, history)
+    try:
+        import whisper
+        model = whisper.load_model("small")
+        result = model.transcribe(audio, language="fr")
+        message = result["text"].strip()
+        print(f"🎙️ Transcribed: {message}")
+        new_history, _, agent_log = process_text_message(message, history)
+        return new_history, agent_log
+    except Exception as e:
+        return history, f"Erreur audio: {e}"
 
 def reset_conversation():
     """Reset the conversation"""
-    global orchestrator, logger, chat_history
+    global orchestrator, logger
     orchestrator = Orchestrator()
     logger = LoggerAgent()
-    chat_history = []
-    return [], "", "Conversation réinitialisée ✅"
+    return [], "", "✅ Conversation réinitialisée"
 
 def save_artifact():
     """Save call artifact"""
-    filepath = logger.save_artifact(
-        customer_info=orchestrator.current_customer,
-        escalated=False
-    )
-    return f"✅ Artifact sauvegardé: {filepath}"
+    try:
+        filepath = logger.save_artifact(
+            customer_info=orchestrator.current_customer,
+            escalated=False
+        )
+        return f"✅ Sauvegardé: {filepath}"
+    except Exception as e:
+        return f"❌ Erreur: {e}"
 
-# Build Gradio UI
-with gr.Blocks(title="TelecomAI Call Center", theme=gr.themes.Soft()) as app:
+# Build UI
+with gr.Blocks(title="TelecomAI Call Center") as app:
 
-    gr.Markdown("""
-    # 🎙️ TelecomAI Call Center
-    ### Système multi-agents IA pour support télécom
-    """)
+    gr.Markdown("# 🎙️ TelecomAI Call Center\n### Système multi-agents IA")
 
     with gr.Row():
         with gr.Column(scale=2):
             gr.Markdown("### 💬 Conversation")
-            chatbot = gr.Chatbot(height=400, label="Chat avec Sarah (IA)")
+            initial_message = [
+               {"role": "assistant", "content": "Bonjour ! Je suis Sarah, votre assistante TelecomAI. Comment puis-je vous aider aujourd'hui ?"}
+                      ]
+            chatbot = gr.Chatbot(
+              value=initial_message,
+              height=400,
+              label="Sarah - Assistante TelecomAI"
+            )
 
             with gr.Row():
                 text_input = gr.Textbox(
-                    placeholder="Tapez votre message ici...",
-                    label="Message texte",
-                    scale=4
+                   placeholder="Tapez votre message...",
+                   label="",
+                   scale=4,
+                   interactive=True
                 )
                 send_btn = gr.Button("Envoyer 📨", scale=1, variant="primary")
 
@@ -110,26 +133,23 @@ with gr.Blocks(title="TelecomAI Call Center", theme=gr.themes.Soft()) as app:
         with gr.Column(scale=1):
             gr.Markdown("### 🤖 Activité des Agents")
             agent_activity = gr.Textbox(
-                label="Logs agents en temps réel",
-                lines=12,
+                label="Logs en temps réel",
+                lines=10,
                 interactive=False
             )
 
             gr.Markdown("### 🛠️ Actions")
-            with gr.Row():
-                reset_btn = gr.Button("🔄 Nouvelle conversation", variant="stop")
-                save_btn = gr.Button("💾 Sauvegarder artifact")
+            reset_btn = gr.Button("🔄 Nouvelle conversation", variant="stop")
+            save_btn = gr.Button("💾 Sauvegarder artifact")
+            save_output = gr.Textbox(label="Statut", interactive=False)
 
-            save_output = gr.Textbox(label="Statut sauvegarde", interactive=False)
-
-    # Example scenarios
-    gr.Markdown("### 📋 Scénarios de test rapide")
+    gr.Markdown("### 📋 Scénarios de test")
     with gr.Row():
         gr.Examples(
             examples=[
                 ["Bonjour, mon numéro est le 0612345678"],
                 ["Est-ce que mon abonnement est actif ?"],
-                ["Mon internet 4G ne fonctionne plus depuis ce matin"],
+                ["Mon internet 4G ne fonctionne plus"],
                 ["Comment résilier mon contrat ?"],
                 ["Je veux parler à un conseiller humain"],
                 ["Quel est mon solde ?"]
@@ -137,7 +157,7 @@ with gr.Blocks(title="TelecomAI Call Center", theme=gr.themes.Soft()) as app:
             inputs=text_input
         )
 
-    # Wire up events
+    # Events
     send_btn.click(
         process_text_message,
         inputs=[text_input, chatbot],
@@ -163,6 +183,5 @@ with gr.Blocks(title="TelecomAI Call Center", theme=gr.themes.Soft()) as app:
     )
 
 if __name__ == "__main__":
-    print("🚀 Lancement de TelecomAI Call Center...")
+    print("🚀 Lancement TelecomAI...")
     app.launch(share=False, server_port=7860)
-    
